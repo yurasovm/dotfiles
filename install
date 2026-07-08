@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+#
+#  dotfiles/install — модульная установка окружения.
+#  Конфиги все в репозитории; ставятся/линкуются только выбранные модули.
+#
+#      ./install                 # интерактивный выбор (в терминале)
+#      ./install zsh nvim        # только эти модули (+ их зависимости)
+#      ./install --profile server
+#      ./install --select        # только выбрать (печатает список, не ставит)
+#      ./install --list          # каталог модулей (name<TAB>platforms<TAB>desc)
+#
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODULES_DIR="$DOTFILES_DIR/modules"
+PROFILES_DIR="$DOTFILES_DIR/profiles"
+export DOTFILES_DIR MODULES_DIR PROFILES_DIR
+
+. "$DOTFILES_DIR/lib/common.sh"
+. "$DOTFILES_DIR/lib/modules.sh"
+. "$DOTFILES_DIR/lib/picker.sh"
+
+detect_os
+
+# --- Разбор аргументов -----------------------------------------------------
+MODE="install"          # install | select | list
+PROFILE=""
+ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --list)            MODE="list" ;;
+    --select)          MODE="select" ;;
+    --profile)         shift; PROFILE="${1:-}"; [ -n "$PROFILE" ] || die "--profile требует имя." ;;
+    --profile=*)       PROFILE="${1#--profile=}" ;;
+    -h|--help)         sed -n '2,12p' "$0"; exit 0 ;;
+    -*)                die "Неизвестный флаг: $1" ;;
+    *)                 ARGS+=("$1") ;;
+  esac
+  shift
+done
+
+# --- Режим --list ----------------------------------------------------------
+if [ "$MODE" = "list" ]; then
+  for m in $(list_modules); do
+    printf '%s\t%s\t%s\n' "$m" "$(module_plats "$m")" "$(module_desc "$m")"
+  done
+  exit 0
+fi
+
+# --- Что выбрано ------------------------------------------------------------
+# Приоритеты:
+#   явные аргументы      → ставим ровно их, без меню
+#   --profile X (без --select) → ставим профиль напрямую
+#   --select [--profile] → меню, профиль/дефолт как ПРЕДВЫБОР
+#   ничего               → меню с дефолтным предвыбором (без tty → дефолт)
+if [ "${#ARGS[@]}" -gt 0 ]; then
+  SELECTED="${ARGS[*]}"
+else
+  if [ -n "$PROFILE" ]; then PRE="$(expand_profile "$PROFILE")"; else PRE="$(default_modules)"; fi
+  if [ "$MODE" = "select" ] || [ -z "$PROFILE" ]; then
+    CAND=()
+    for m in $(list_modules); do platform_ok "$m" && CAND+=("$m"); done
+    SELECTED="$(pick_modules "$PRE" "${CAND[@]}")"
+  else
+    SELECTED="$PRE"
+  fi
+fi
+
+# нормализуем пробелы
+SELECTED="$(printf '%s' "$SELECTED" | tr -s ' ' | sed 's/^ //; s/ $//')"
+[ -n "$SELECTED" ] || die "Не выбрано ни одного модуля."
+
+# развернуть зависимости
+RESOLVED="$(resolve_deps $SELECTED)"
+
+# --- Режим --select: только напечатать выбор -------------------------------
+if [ "$MODE" = "select" ]; then
+  printf '%s\n' "$RESOLVED"
+  exit 0
+fi
+
+# --- Установка -------------------------------------------------------------
+log "ОС: $OS"
+log "Модули (с зависимостями): $RESOLVED"
+
+# префиксы
+if [ "$OS" = "linux" ]; then
+  $SUDO apt-get update -y
+  apt_install git curl ca-certificates
+elif [ "$OS" = "mac" ]; then
+  command -v brew >/dev/null 2>&1 || die "Нет Homebrew. Установи: https://brew.sh"
+fi
+ensure_stow
+
+for m in $RESOLVED; do
+  if ! platform_ok "$m"; then
+    warn "Модуль '$m' не для $OS — пропускаю."
+    continue
+  fi
+  printf '\n'; log "═══ Модуль: $m ═══"
+  mdir="$MODULES_DIR/$m"
+  install_packages_for "$mdir"
+  stow_module "$mdir"                       # сперва линкуем конфиг…
+  if [ -f "$mdir/setup.sh" ]; then          # …потом setup (может опираться на конфиг)
+    log "setup.sh…"
+    OS="$OS" DOTFILES_DIR="$DOTFILES_DIR" MODULE_DIR="$mdir" bash "$mdir/setup.sh"
+  fi
+  ok "Модуль '$m' готов."
+done
+
+printf '\n'; ok "Готово. Установлено: $RESOLVED"

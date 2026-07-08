@@ -1,0 +1,10 @@
+git
+curl
+unzip
+tar
+build-essential
+ripgrep
+fd-find
+jq
+nodejs
+npm

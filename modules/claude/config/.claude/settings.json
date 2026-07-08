@@ -1,0 +1,23 @@
+{
+  "model": "opus[1m]",
+  "hooks": {
+    "Notification": [
+      { "hooks": [ { "type": "command", "command": "printf '\\a' > /dev/tty" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "printf '\\a' > /dev/tty" } ] }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$HOME/.claude/statusline.sh"
+  },
+  "enabledPlugins": {
+    "swift-lsp@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true
+  },
+  "language": "russian",
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark-ansi"
+}

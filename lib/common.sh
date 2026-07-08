@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# dotfiles/lib/common.sh — общие функции (логи, ОС, пакеты, stow-линковка).
+# Совместимо с bash 3.2 (macOS) и bash 5 (Linux).
+
+c_blue='\033[1;34m'; c_green='\033[1;32m'; c_yellow='\033[1;33m'; c_red='\033[1;31m'
+c_dim='\033[2m'; c_bold='\033[1m'; c_rst='\033[0m'
+log()  { printf "${c_blue}▸${c_rst} %s\n" "$*" >&2; }
+ok()   { printf "${c_green}✓${c_rst} %s\n" "$*" >&2; }
+warn() { printf "${c_yellow}!${c_rst} %s\n" "$*" >&2; }
+die()  { printf "${c_red}✗ %s${c_rst}\n" "$*" >&2; exit 1; }
+
+# --- ОС: OS = mac | linux --------------------------------------------------
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) OS=mac ;;
+    Linux)  OS=linux ;;
+    *) die "Неподдерживаемая ОС: $(uname -s)" ;;
+  esac
+}
+
+SUDO=""
+[ "$(id -u)" -eq 0 ] 2>/dev/null || SUDO="sudo"
+
+# --- Установка пакетов -----------------------------------------------------
+# apt_install pkg…   /   brew_install pkg…
+apt_install() {
+  [ "$#" -gt 0 ] || return 0
+  export DEBIAN_FRONTEND=noninteractive
+  $SUDO apt-get install -y --no-install-recommends "$@"
+}
+brew_install() {
+  [ "$#" -gt 0 ] || return 0
+  brew install "$@"
+}
+
+# Установить пакеты модуля из packages.apt / packages.brew (по одной строке на пакет)
+install_packages_for() {
+  local mdir="$1" file pkgs
+  case "$OS" in
+    linux) file="$mdir/packages.apt" ;;
+    mac)   file="$mdir/packages.brew" ;;
+  esac
+  [ -f "$file" ] || return 0
+  # собрать непустые, некомментированные строки
+  pkgs="$(grep -vE '^\s*(#|$)' "$file" 2>/dev/null | tr '\n' ' ')"
+  [ -n "$pkgs" ] || return 0
+  log "Пакеты ($OS): $pkgs"
+  # shellcheck disable=SC2086
+  case "$OS" in
+    linux) apt_install $pkgs ;;
+    mac)   brew_install $pkgs ;;
+  esac
+}
+
+# --- stow --------------------------------------------------------------------
+ensure_stow() {
+  command -v stow >/dev/null 2>&1 && return 0
+  log "Ставлю stow…"
+  case "$OS" in
+    linux) $SUDO apt-get update -y && apt_install stow ;;
+    mac)   brew_install stow ;;
+  esac
+  command -v stow >/dev/null 2>&1 || die "Не удалось установить stow."
+}
+
+# Слинковать config/ модуля в $HOME. Конфликтующие реальные файлы — в бэкап.
+stow_module() {
+  local mdir="$1" pkg="$1/config"
+  [ -d "$pkg" ] || return 0          # config-less модуль — нечего линковать
+  # бэкап реальных (не-symlink) файлов, которые перекрыл бы stow
+  local rel tgt
+  while IFS= read -r rel; do
+    rel="${rel#./}"
+    tgt="$HOME/$rel"
+    if [ -e "$tgt" ] && [ ! -L "$tgt" ]; then
+      mv "$tgt" "$tgt.pre-dotfiles.bak"
+      warn "Бэкап: ~/$rel → ~/$rel.pre-dotfiles.bak"
+    fi
+  done < <(cd "$pkg" && find . \( -type f -o -type l \))
+  stow -d "$mdir" -t "$HOME" --restow config
+}
+
+# Отвязать config/ модуля
+unstow_module() {
+  local mdir="$1"
+  [ -d "$mdir/config" ] || return 0
+  stow -d "$mdir" -t "$HOME" -D config 2>/dev/null || true
+}
