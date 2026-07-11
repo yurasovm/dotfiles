@@ -14,9 +14,9 @@ if [ "$OS" = "linux" ]; then
     aarch64|arm64) tb="nvim-linux-arm64.tar.gz" ;;
     *) die "Неизвестная архитектура: $arch" ;;
   esac
-  log "Ставлю Neovim ($tb) в /opt/nvim…"
+  step "Качаю Neovim ($tb) → /opt/nvim…" "📥"
   tmp="$(mktemp -d)"
-  curl -fsSL "https://github.com/neovim/neovim/releases/latest/download/${tb}" -o "$tmp/nvim.tar.gz" \
+  dl "https://github.com/neovim/neovim/releases/latest/download/${tb}" "$tmp/nvim.tar.gz" \
     || die "Не удалось скачать Neovim."
   $SUDO rm -rf /opt/nvim && $SUDO mkdir -p /opt/nvim
   $SUDO tar -xzf "$tmp/nvim.tar.gz" -C /opt/nvim --strip-components=1
@@ -28,7 +28,7 @@ if [ "$OS" = "linux" ]; then
     case "$arch" in x86_64|amd64) sa="linux-x86_64" ;; aarch64|arm64) sa="linux-aarch64" ;; *) sa="" ;; esac
     if [ -n "$sa" ]; then
       tmp="$(mktemp -d)"
-      if curl -fsSL "https://github.com/JohnnyMorganz/StyLua/releases/latest/download/stylua-${sa}.zip" -o "$tmp/s.zip"; then
+      if dl "https://github.com/JohnnyMorganz/StyLua/releases/latest/download/stylua-${sa}.zip" "$tmp/s.zip"; then
         unzip -q "$tmp/s.zip" -d "$tmp" && $SUDO install -m755 "$tmp/stylua" /usr/local/bin/stylua
       else
         warn "stylua не скачался — форматирование lua недоступно."
@@ -56,7 +56,7 @@ if command -v npm >/dev/null 2>&1; then
 fi
 
 # --- Синк плагинов (headless) — конфиг уже слинкован install'ом ------------
-log "Ставлю плагины (lazy sync, headless)…"
-"$NVIM_BIN" --headless "+Lazy! sync" +qa 2>/dev/null \
+step "Ставлю плагины (lazy sync, headless — может занять минуту, без прогресса)…" "🔌"
+with_timeout 300 "$NVIM_BIN" --headless "+Lazy! sync" +qa 2>/dev/null \
   || warn "Автосинк плагинов не завершился — доустановятся при первом запуске nvim."
-log "treesitter-парсеры докачаются при первом запуске nvim."
+step "treesitter-парсеры докачаются при первом запуске nvim." "ℹ️ "

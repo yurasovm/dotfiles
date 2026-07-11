@@ -26,10 +26,10 @@ case "$(uname -m)" in
 esac
 BINDIR="$HOME/.local/bin"; mkdir -p "$BINDIR"
 url="https://github.com/mrjackwills/oxker/releases/latest/download/oxker_linux_${a}.tar.gz"
-log "Ставлю oxker (${a}) → $BINDIR…"
+step "Качаю oxker (${a})…" "📥"
 tmp="$(mktemp -d)"
-curl -fsSL "$url" -o "$tmp/oxker.tar.gz" || die "Не удалось скачать oxker."
+dl "$url" "$tmp/oxker.tar.gz" || die "Не удалось скачать oxker."
 tar -xzf "$tmp/oxker.tar.gz" -C "$tmp" oxker
 install -Dm755 "$tmp/oxker" "$BINDIR/oxker"
 rm -rf "$tmp"
-log "Готово: $("$BINDIR/oxker" --version 2>/dev/null || echo установлен). Запуск: oxker"
+step "oxker готов: $("$BINDIR/oxker" --version 2>/dev/null || echo установлен). Запуск: oxker" "✅"

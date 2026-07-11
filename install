@@ -8,6 +8,7 @@
 #      ./install --profile server
 #      ./install --select        # только выбрать (печатает список, не ставит)
 #      ./install --list          # каталог модулей (name<TAB>platforms<TAB>desc)
+#      ./install --status        # что уже установлено, а что нет
 #
 set -euo pipefail
 
@@ -29,6 +30,7 @@ ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --list)            MODE="list" ;;
+    --status)          MODE="status" ;;
     --select)          MODE="select" ;;
     --profile)         shift; PROFILE="${1:-}"; [ -n "$PROFILE" ] || die "--profile требует имя." ;;
     --profile=*)       PROFILE="${1#--profile=}" ;;
@@ -44,6 +46,29 @@ if [ "$MODE" = "list" ]; then
   for m in $(list_modules); do
     printf '%s\t%s\t%s\n' "$m" "$(module_plats "$m")" "$(module_desc "$m")"
   done
+  exit 0
+fi
+
+# --- Режим --status: что установлено ---------------------------------------
+if [ "$MODE" = "status" ]; then
+  printf "\n${c_bold}Статус модулей${c_rst} ${c_dim}(ОС: %s)${c_rst}\n" "$OS" >&2
+  for m in $(list_modules); do
+    platform_ok "$m" || continue
+    rc=0; module_installed "$m" || rc=$?
+    case "$rc" in
+      0) mark="${c_green}✓${c_rst}"; note="установлен" ;;
+      1) mark="${c_red}✗${c_rst}"; note="${c_yellow}не установлен${c_rst}" ;;
+      *) mark="${c_dim}?${c_rst}"; note="${c_dim}нет проверки${c_rst}" ;;
+    esac
+    printf "  %b %-8s %b\n" "$mark" "$m" "$note" >&2
+    # zsh: бинарь может быть, но логин-шелл — другой. Это частая путаница.
+    if [ "$m" = zsh ] && [ "$rc" = 0 ]; then
+      cur="$(basename "${SHELL:-?}")"
+      printf "      ${c_dim}логин-шелл сейчас: %s${c_rst}\n" "$cur" >&2
+      [ "$cur" != zsh ] && printf "      ${c_dim}→ zsh включится с нового входа; если нет — chsh -s \$(command -v zsh)${c_rst}\n" >&2
+    fi
+  done
+  echo >&2
   exit 0
 fi
 
@@ -80,32 +105,63 @@ if [ "$MODE" = "select" ]; then
 fi
 
 # --- Установка -------------------------------------------------------------
-log "ОС: $OS"
-log "Модули (с зависимостями): $RESOLVED"
+# заранее отсеиваем несовместимые с ОС — чтобы знать общее число шагов [i/N]
+TO_INSTALL=""; TOTAL=0
+for m in $RESOLVED; do
+  if platform_ok "$m"; then TO_INSTALL="$TO_INSTALL $m"; TOTAL=$((TOTAL+1))
+  else warn "Модуль '$m' не для $OS — пропускаю."; fi
+done
+TO_INSTALL="${TO_INSTALL# }"
 
-# префиксы
+printf "\n${c_bold}${c_blue}╺━ dotfiles/install ━╸${c_rst}\n" >&2
+log "ОС: ${c_bold}$OS${c_rst}  •  модулей: ${c_bold}$TOTAL${c_rst}  •  ${c_dim}$TO_INSTALL${c_rst}"
+
+# базовые пакеты + stow
 if [ "$OS" = "linux" ]; then
-  $SUDO apt-get update -y
-  apt_install git curl ca-certificates
+  step "Базовые пакеты (git, curl, ca-certificates)…" "🧱"
+  $SUDO apt-get update -y && apt_install git curl ca-certificates
 elif [ "$OS" = "mac" ]; then
   command -v brew >/dev/null 2>&1 || die "Нет Homebrew. Установи: https://brew.sh"
 fi
 ensure_stow
 
-for m in $RESOLVED; do
-  if ! platform_ok "$m"; then
-    warn "Модуль '$m' не для $OS — пропускаю."
-    continue
+# один модуль целиком: пакеты → stow → setup. Любой сбой → код 1 (не рушит остальные).
+do_module() {
+  local m="$1" mdir="$MODULES_DIR/$m"
+  install_packages_for "$mdir" || return 1
+  stow_module "$mdir" || return 1                    # сперва линкуем конфиг…
+  if [ -f "$mdir/setup.sh" ]; then                   # …потом setup (может опираться на конфиг)
+    step "setup.sh…" "⚙️ "
+    OS="$OS" DOTFILES_DIR="$DOTFILES_DIR" MODULE_DIR="$mdir" bash "$mdir/setup.sh" || return 1
   fi
-  printf '\n'; log "═══ Модуль: $m ═══"
-  mdir="$MODULES_DIR/$m"
-  install_packages_for "$mdir"
-  stow_module "$mdir"                       # сперва линкуем конфиг…
-  if [ -f "$mdir/setup.sh" ]; then          # …потом setup (может опираться на конфиг)
-    log "setup.sh…"
-    OS="$OS" DOTFILES_DIR="$DOTFILES_DIR" MODULE_DIR="$mdir" bash "$mdir/setup.sh"
+  return 0
+}
+
+i=0; DONE_OK=""; FAILED=""
+for m in $TO_INSTALL; do
+  i=$((i+1))
+  hdr "$i" "$TOTAL" "$m" "$(module_desc "$m")"
+  if do_module "$m"; then
+    # подтверждаем фактом (probe), а не только тем, что setup не упал
+    rc=0; module_installed "$m" || rc=$?
+    if [ "$rc" = 1 ]; then
+      warn "Модуль '$m': шаги прошли, но проверка не находит его в PATH (возможно, нужен новый вход)."
+    else
+      ok "Модуль '$m' — готов ✅"          # rc=0 установлен, rc=2 probe не задан — верим setup
+    fi
+    DONE_OK="$DONE_OK $m"
+  else
+    warn "Модуль '$m' не установился — продолжаю со следующим."
+    FAILED="$FAILED $m"
   fi
-  ok "Модуль '$m' готов."
 done
 
-printf '\n'; ok "Готово. Установлено: $RESOLVED"
+# --- Итог ------------------------------------------------------------------
+printf "\n${c_bold}╺━ Итог ━╸${c_rst}\n" >&2
+[ -n "$DONE_OK" ] && ok "Установлено:${DONE_OK}"
+if [ -n "$FAILED" ]; then
+  warn "Не установились:${FAILED}"
+  warn "Повтори:  ./install${FAILED}   ${c_dim}(готовое пропустится, доставится только это)${c_rst}"
+fi
+step "Проверить состояние в любой момент:  ./install --status" "ℹ️ "
+[ -z "$FAILED" ] && ok "Всё готово. 🎉" || exit 1

@@ -29,9 +29,9 @@ command -v unzip >/dev/null 2>&1 || { log "Ставлю unzip…"; $SUDO apt-get
 
 BINDIR="$HOME/.local/bin"; mkdir -p "$BINDIR"
 url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${target}.zip"
-log "Ставлю yazi (${target}) → $BINDIR…"
+step "Качаю yazi (${target})…" "📥"
 tmp="$(mktemp -d)"
-curl -fsSL "$url" -o "$tmp/yazi.zip" || die "Не удалось скачать yazi."
+dl "$url" "$tmp/yazi.zip" || die "Не удалось скачать yazi."
 unzip -q "$tmp/yazi.zip" -d "$tmp" || die "Не удалось распаковать yazi."
 for bin in yazi ya; do
   src="$(find "$tmp" -type f -name "$bin" 2>/dev/null | head -1)"
@@ -39,4 +39,4 @@ for bin in yazi ya; do
   install -Dm755 "$src" "$BINDIR/$bin"
 done
 rm -rf "$tmp"
-log "Готово: $("$BINDIR/yazi" --version 2>/dev/null || echo установлен). Запуск: yazi"
+step "yazi готов: $("$BINDIR/yazi" --version 2>/dev/null || echo установлен). Запуск: yazi (или обёртка y)" "✅"

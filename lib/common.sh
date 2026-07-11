@@ -6,8 +6,32 @@ c_blue='\033[1;34m'; c_green='\033[1;32m'; c_yellow='\033[1;33m'; c_red='\033[1;
 c_dim='\033[2m'; c_bold='\033[1m'; c_rst='\033[0m'
 log()  { printf "${c_blue}▸${c_rst} %s\n" "$*" >&2; }
 ok()   { printf "${c_green}✓${c_rst} %s\n" "$*" >&2; }
-warn() { printf "${c_yellow}!${c_rst} %s\n" "$*" >&2; }
+warn() { printf "${c_yellow}⚠${c_rst}  %s\n" "$*" >&2; }
 die()  { printf "${c_red}✗ %s${c_rst}\n" "$*" >&2; exit 1; }
+
+# --- Презентация / прогресс ------------------------------------------------
+have_tty() { [ -t 2 ]; }                     # stderr — терминал? (для прогресс-баров)
+
+# Заголовок модуля: hdr <i> <n> <имя> [описание]
+hdr()  { printf "\n${c_bold}${c_blue}📦 [%s/%s] %s${c_rst}  ${c_dim}%s${c_rst}\n" "$1" "$2" "$3" "${4:-}" >&2; }
+# Под-шаг внутри модуля: step <текст> [emoji]
+step() { printf "   ${2:-·} %s\n" "$1" >&2; }
+
+# Скачать файл: прогресс-бар в терминале, иначе тихо; с таймаутами и ретраями.
+#   dl <url> <out>
+dl() {
+  local pv="--silent --show-error"
+  have_tty && pv="--progress-bar"
+  # shellcheck disable=SC2086
+  curl -fL $pv --connect-timeout 15 --retry 2 --retry-delay 2 "$1" -o "$2"
+}
+
+# Выполнить команду с общим таймаутом (если есть coreutils timeout).
+#   with_timeout <секунды> <команда...>   → код 124 при истечении времени
+with_timeout() {
+  local t="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$t" "$@"; else "$@"; fi
+}
 
 # --- ОС: OS = mac | linux --------------------------------------------------
 detect_os() {

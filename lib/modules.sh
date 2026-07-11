@@ -2,9 +2,10 @@
 # dotfiles/lib/modules.sh — каталог модулей, парсинг module.conf, deps, профили.
 # Требует: MODULES_DIR, PROFILES_DIR, OS.
 
-# module.conf — sourceable: desc, platforms, deps, default
+# module.conf — sourceable: desc, platforms, deps, default, probe
+#   probe — команда-проверка «установлен ли модуль» (код 0 = да), напр. probe="command -v yazi"
 _load_conf() {
-  desc=""; platforms="mac linux"; deps=""; default="off"
+  desc=""; platforms="mac linux"; deps=""; default="off"; probe=""
   # shellcheck disable=SC1090
   [ -f "$MODULES_DIR/$1/module.conf" ] && . "$MODULES_DIR/$1/module.conf"
 }
@@ -12,6 +13,15 @@ module_desc()    { ( _load_conf "$1"; printf '%s' "$desc"; ); }
 module_plats()   { ( _load_conf "$1"; printf '%s' "$platforms"; ); }
 module_deps()    { ( _load_conf "$1"; printf '%s' "$deps"; ); }
 module_default() { ( _load_conf "$1"; printf '%s' "$default"; ); }
+module_probe()   { ( _load_conf "$1"; printf '%s' "$probe"; ); }
+
+# Проверить, установлен ли модуль (по его probe).
+#   0 — установлен | 1 — нет | 2 — probe не задан
+module_installed() {
+  local p; p="$(module_probe "$1")"
+  [ -n "$p" ] || return 2
+  eval "$p" >/dev/null 2>&1
+}
 
 module_exists() { [ -d "$MODULES_DIR/$1" ]; }
 
