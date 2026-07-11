@@ -33,6 +33,26 @@ with_timeout() {
   if command -v timeout >/dev/null 2>&1; then timeout "$t" "$@"; else "$@"; fi
 }
 
+# --- Совместимость системы -------------------------------------------------
+# Версия glibc, напр. "2.31" (пусто, если musl/не определить).
+glibc_version() {
+  local v
+  v="$(getconf GNU_LIBC_VERSION 2>/dev/null)" || v=""
+  case "$v" in
+    glibc\ *) printf '%s' "${v#glibc }" ;;
+    *)        ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1 ;;
+  esac
+}
+# glibc >= X.Y ?  0 — да (или версию не определить — не блокируем), 1 — старее.
+glibc_atleast() {
+  local want_ma="$1" want_mi="$2" v ma mi
+  v="$(glibc_version)"; [ -n "$v" ] || return 0
+  ma="${v%%.*}"; mi="${v#*.}"; mi="${mi%%.*}"
+  [ "$ma" -gt "$want_ma" ] && return 0
+  [ "$ma" -lt "$want_ma" ] && return 1
+  [ "$mi" -ge "$want_mi" ]
+}
+
 # --- ОС: OS = mac | linux --------------------------------------------------
 detect_os() {
   case "$(uname -s)" in

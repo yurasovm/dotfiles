@@ -7,6 +7,17 @@ detect_os
 
 # --- Neovim ----------------------------------------------------------------
 if [ "$OS" = "linux" ]; then
+  # Свежие релизы Neovim собираются на Ubuntu 22.04 и требуют glibc >= 2.34.
+  # На старых системах (напр. Ubuntu 20.04 = glibc 2.31) prebuilt-бинарь падает
+  # с 'GLIBC_2.xx not found', а musl-сборки у Neovim нет. Честно пропускаем.
+  if ! glibc_atleast 2 34; then
+    warn "nvim пропущен: нужен glibc ≥ 2.34, в системе — $(glibc_version 2>/dev/null || echo '?')."
+    warn "Prebuilt-бинарь Neovim тут не запустится. Варианты: обновить ОС или собрать nvim из исходников вручную."
+    if command -v nvim >/dev/null 2>&1 && ! nvim --version >/dev/null 2>&1; then
+      warn "Найден нерабочий nvim от прошлой попытки — удали: \$SUDO rm -f /usr/local/bin/nvim && \$SUDO rm -rf /opt/nvim"
+    fi
+    exit 0
+  fi
   # apt-версия старая → ставим официальный tarball в /opt/nvim
   arch="$(uname -m)"
   case "$arch" in
