@@ -2,14 +2,18 @@
 # Модуль yazi: TUI-файловый менеджер (https://github.com/sxyazi/yazi).
 # macOS — через packages.brew (yazi). Linux — prebuilt-бинари в ~/.local/bin.
 # Ставятся оба бинаря релиза: yazi (сам менеджер) и ya (CLI/плагины).
+# ВАЖНО: на Linux берём musl-сборку — она статическая и не зависит от версии
+# glibc (gnu-сборка падает на старых системах, напр. Ubuntu 20.04 = glibc 2.31).
 set -euo pipefail
 . "$DOTFILES_DIR/lib/common.sh"
 detect_os
 
 export PATH="$HOME/.local/bin:$PATH"
 
-if command -v yazi >/dev/null 2>&1; then
-  log "yazi уже установлен: $(yazi --version 2>/dev/null || echo '?')"
+# Считаем установленным, только если бинарь есть И реально запускается
+# (старая/битая сборка — напр. под чужой glibc — не должна блокировать переустановку).
+if command -v yazi >/dev/null 2>&1 && yazi --version >/dev/null 2>&1; then
+  step "yazi уже установлен: $(yazi --version 2>/dev/null || echo '?')" "✓"
   exit 0
 fi
 
@@ -18,10 +22,10 @@ if [ "$OS" = "mac" ]; then
   exit 0
 fi
 
-# Linux: prebuilt-бинари (glibc)
+# Linux: prebuilt-бинари (musl — статические, независимы от glibc)
 case "$(uname -m)" in
-  x86_64|amd64)  target="x86_64-unknown-linux-gnu" ;;
-  aarch64|arm64) target="aarch64-unknown-linux-gnu" ;;
+  x86_64|amd64)  target="x86_64-unknown-linux-musl" ;;
+  aarch64|arm64) target="aarch64-unknown-linux-musl" ;;
   *) die "Неизвестная архитектура: $(uname -m)" ;;
 esac
 

@@ -45,6 +45,11 @@ detect_os() {
 SUDO=""
 [ "$(id -u)" -eq 0 ] 2>/dev/null || SUDO="sudo"
 
+# Пользовательские бинари (yazi, oxker, herdr…) ставятся сюда — чтобы install,
+# probe и --status видели их независимо от того, из bash или zsh запущен скрипт.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+export PATH
+
 # --- Установка пакетов -----------------------------------------------------
 # apt_install pkg…   /   brew_install pkg…
 apt_install() {
