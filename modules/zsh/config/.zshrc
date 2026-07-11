@@ -24,7 +24,10 @@ alias dc='docker compose'
 alias dps='docker ps'
 
 # yazi: обёртка y — при выходе (q) меняет каталог шелла на текущий в yazi.
-# Инертна, если yazi не установлен (модуль yazi).
+# ВАЖНО: плагин yarn задаёт `alias y='yarn'`. Снимаем его ОТДЕЛЬНОЙ строкой до
+# определения функции — иначе zsh раскроет алиас при разборе (parse error).
+# unalias вне if: чтобы выполнился раньше, чем zsh прочитает тело функции.
+unalias y 2>/dev/null || true
 if command -v yazi >/dev/null 2>&1; then
   y() {
     local tmp cwd
