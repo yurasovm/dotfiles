@@ -1,0 +1,11 @@
+# Сам yazi ставится бинарём в setup.sh (в apt его нет).
+# Здесь — опциональные зависимости для превью/поиска + unzip для распаковки релиза.
+unzip
+ffmpeg
+p7zip-full
+jq
+poppler-utils
+fd-find
+ripgrep
+fzf
+imagemagick

@@ -1,0 +1,11 @@
+# yazi + опциональные зависимости для превью/поиска/навигации
+yazi
+ffmpeg
+sevenzip
+jq
+poppler
+fd
+ripgrep
+fzf
+zoxide
+imagemagick
